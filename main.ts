@@ -2,6 +2,8 @@ import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Set
 import { Configuration, CreateCompletionRequest, CreateCompletionResponse, OpenAIApi } from 'openai'
 import axios, { AxiosInstance } from 'axios'
 import matter from 'gray-matter'
+import { buildPrompt, label, toPrecision, truncate, words } from 'textUtils'
+import { createNumberInput } from 'obsidianUtils'
 
 const MAX_COMPLETION_TOKENS = 150
 const MAX_TOKENS = 2048
@@ -126,13 +128,6 @@ export default class TextGeneratorPlugin extends Plugin {
 			.join('\n')
 	}
 
-	buildPrompt(body: string, header: string = '', footer: string = '') {
-		console.log(`Building prompt:\nbody:\n`, body, `\nheader:\n`, header, `\nfooter:\n`, footer)
-		const text = body + (footer ? `\n${footer}` : '')
-		const prompt = this.label(text, header, MAX_PROMPT_TOKENS, 'start')
-		console.log(`Prompt:\n`, prompt)
-		return prompt
-	}
 
 	printFrontmatter(frontmatter?: Frontmatter) {
 		if (!frontmatter) return ''
@@ -153,60 +148,33 @@ export default class TextGeneratorPlugin extends Plugin {
 		if (!this.openAIApi) throw Error('You need to configure your API key to generate lines')
 		const header = `${directive}:\n${this.printFrontmatter(frontmatter)}\n`
 		const body = content
-		const prompt = this.buildPrompt(body, header, footer)
+		const prompt = buildPrompt(body, header, footer, MAX_PROMPT_TOKENS)
 		return this.getCompletionText(prompt)
 	}
 
-	words(text: string): string[] {
-		return text.split(/\s+/)
-	}
-
-	label(text: string, label: string, maxLength: number, truncateDirection: 'start' | 'end' = 'end', truncationIndicator: string = '...') {
-		console.log(`Labeling (${label}, ${maxLength}):\n`, text)
-		const maxTextLength = maxLength - label.length
-		const truncatedText = this.truncate(text, maxTextLength, truncateDirection, truncationIndicator)
-		console.log('Truncated:\n', truncatedText)
-		return label + truncatedText
-	}
-
-	truncate(text: string, maxLength: number, direction: 'start' | 'end' = 'end', truncationIndicator: string = '...'): string {
-		console.log(`Truncating (to ${maxLength}):\n`, text)
-		const lengthDiff = text.length - maxLength
-		if (lengthDiff > 0) {
-			if (direction === 'start') {
-				const start = lengthDiff + truncationIndicator.length
-				return truncationIndicator + text.substring(start)
-			} else {
-				const end = maxLength - truncationIndicator.length
-				return text.substring(0, end) + truncationIndicator
-			}
-		}
-		return text
-	}
-
 	reword = async (text: string) => {
-		const words = this.words(text)
-		console.log(words)
-		if (words.length === 1) {
-			return await this.completeText('Write synonyms for this word', `Word:${words[0]}\nSynonym:`)
+		const ws = words(text)
+		console.log(ws)
+		if (ws.length === 1) {
+			return await this.completeText('Write synonyms for this word', `Word:${ws[0]}\nSynonym:`)
 		}
 		return await this.completeText('Reword this text', `Text:${text}\nReworded:`)
 	}
 
 	simplify = async (text: string) => {
-		const words = this.words(text)
-		console.log(words)
-		if (words.length === 1) {
-			return await this.completeText('Write eighth-grade level synonyms for this word', `Word:${words[0]}\nSynonym:`)
+		const ws = words(text)
+		console.log(ws)
+		if (ws.length === 1) {
+			return await this.completeText('Write eighth-grade level synonyms for this word', `Word:${ws[0]}\nSynonym:`)
 		}
 		return await this.completeText('Reword this text for an eighth-grade student', `Text:${text}\nReworded:`)
 	}
 
 	complicate = async (text: string) => {
-		const words = this.words(text)
-		console.log(words)
-		if (words.length === 1) {
-			return await this.completeText('Write PhD level synonyms for this word', `Word:${words[0]}\nSynonym:`)
+		const ws = words(text)
+		console.log(ws)
+		if (ws.length === 1) {
+			return await this.completeText('Write PhD level synonyms for this word', `Word:${ws[0]}\nSynonym:`)
 		}
 		return await this.completeText('Reword this text for a PhD student', `Text:${text}\nReworded:`)
 	}
@@ -257,7 +225,7 @@ export default class TextGeneratorPlugin extends Plugin {
 	generateTags = async (editor: Editor, view: MarkdownView) => {
 		const text = editor.getDoc().getValue()
 		console.log('Doc', text)
-		const prompt = this.buildPrompt(text, `Generate tags for this document.
+		const prompt = buildPrompt(text, `Generate tags for this document.
 
 Document:
 Title: Free to Use
@@ -283,7 +251,10 @@ Title: Todo List
 Tags: #note #todo-list #chores
 
 Document:
-`, 'Tags:')
+`,
+			'Tags:',
+			MAX_PROMPT_TOKENS,
+		)
 		const tags = await this.getCompletionText(prompt)
 		editor.replaceRange(`${tags}\n`, {
 			line: 0,
@@ -335,7 +306,7 @@ Document:
 			this.openAIConfiguration = new Configuration({
 				apiKey: this.settings.openAISecretKey,
 			})
-			this.openAIApi = new OpenAIApi(this.openAIConfiguration, undefined, this.axios)
+			this.openAIApi = new OpenAIApi(this.openAIConfiguration, undefined, this.axios as any)
 			console.log('Open AI is configured')
 		}
 	}
@@ -391,7 +362,6 @@ class TextGeneratorSettingTab extends PluginSettingTab {
 				}))
 
 		containerEl.createEl('h3', { text: 'GPT-3 Settings' })
-		containerEl.createEl('p', { text: 'Only modify these if you know what you\'re doing.' })
 
 		createNumberInput(
 			containerEl,
@@ -454,70 +424,4 @@ class TextGeneratorSettingTab extends PluginSettingTab {
 			}
 		)
 	}
-}
-
-function createNumberInput(containerEl: HTMLElement, options: {
-	name: string,
-	settingProvider: () => number,
-	settingUpdate: (value: number) => any,
-	min: number,
-	max: number,
-	description?: string,
-	extraButton?: {
-		icon: string,
-		tooltip: string,
-		url: string,
-	},
-	precision?: number,
-	defaultValue?: number,
-}) {
-	const { name, settingProvider, settingUpdate, min, max, description, extraButton, precision = 2, defaultValue } = options
-	let textComponent: TextComponent
-	const setting = new Setting(containerEl)
-		.setName(name)
-		.addText(text => {
-			textComponent = text
-			const updateValue = async () => {
-				const valueNumber = Math.max(min, Math.min(max, Number.parseFloat(text.getValue())))
-				const valueString = toPrecision(valueNumber, precision)
-				text.setValue(valueString)
-				settingUpdate(valueNumber)
-			}
-			text.inputEl.onblur = () => {
-				updateValue()
-			}
-			text.inputEl.onkeydown = (ev) => {
-				if (ev.key === 'Enter') {
-					updateValue()
-				}
-			}
-			return text
-				.setPlaceholder(`Enter a value from ${min} to ${max}`)
-				.setValue(toPrecision(settingProvider(), precision))
-		}
-		)
-	if (description) {
-		setting.setDesc(description)
-	}
-	if (defaultValue) {
-		setting.addExtraButton(button => button
-			.setIcon('undo')
-			.setTooltip('Revert to default')
-			.onClick(() => {
-				textComponent.setValue(toPrecision(defaultValue, precision))
-				settingUpdate(defaultValue)
-			}))
-	}
-	if (extraButton) {
-		setting.addExtraButton(button => button
-			.setIcon(extraButton.icon)
-			.setTooltip(extraButton.tooltip)
-			.onClick(() => {
-				open(extraButton.url)
-			}))
-	}
-}
-
-function toPrecision(value: number, precision: number) {
-	return (Math.floor(value * Math.pow(10, precision)) / Math.pow(10, precision)).toString()
 }
