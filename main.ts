@@ -1,18 +1,25 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, Command, EditorPosition } from 'obsidian'
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, Command, EditorPosition, TextComponent } from 'obsidian'
 import { Configuration, CreateCompletionRequest, CreateCompletionResponse, OpenAIApi } from 'openai'
 import axios, { AxiosInstance } from 'axios'
 import matter from 'gray-matter'
 
+const MAX_COMPLETION_TOKENS = 150
+const MAX_TOKENS = 2048
+const MAX_PROMPT_TOKENS = MAX_TOKENS - MAX_COMPLETION_TOKENS
+
 interface TextGeneratorPluginSettings {
 	openAISecretKey: string
+	maxTokens: number
+	temperature: number,
+	topP: number,
 }
 
 const DEFAULT_SETTINGS: TextGeneratorPluginSettings = {
-	openAISecretKey: ''
+	openAISecretKey: '',
+	maxTokens: MAX_COMPLETION_TOKENS,
+	temperature: 0.8,
+	topP: 0.95,
 }
-const MAX_COMPLETION_TOKENS = 150
-const MAX_TOKENS = 4000
-const MAX_PROMPT_TOKENS = MAX_TOKENS - MAX_COMPLETION_TOKENS
 
 type Frontmatter = { [key: string]: string }
 
@@ -93,9 +100,9 @@ export default class TextGeneratorPlugin extends Plugin {
 		console.log('Prompt', prompt)
 		const request: CreateCompletionRequest = {
 			prompt,
-			max_tokens: MAX_COMPLETION_TOKENS,
-			temperature: 0.8,
-			top_p: 0.95,
+			max_tokens: this.settings.maxTokens,
+			temperature: this.settings.temperature,
+			top_p: this.settings.topP,
 		}
 		console.log('Completion request', request)
 		const res = await this.openAIApi?.createCompletion('text-curie-001', request)
@@ -369,19 +376,148 @@ class TextGeneratorSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Open AI Secret Key')
 			.setDesc('The secret key you need to use GPT-3.')
+			.addText(text => text
+				.setPlaceholder('Enter your secret')
+				.setValue(this.plugin.settings.openAISecretKey)
+				.onChange(async (value) => {
+					this.plugin.settings.openAISecretKey = value
+					await this.plugin.saveSettings()
+				}))
 			.addExtraButton(button => button
 				.setIcon('links-going-out')
 				.setTooltip('Register here')
 				.onClick(() => {
 					open('https://openai.com/api/')
 				}))
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.openAISecretKey)
-				.onChange(async (value) => {
-					console.log('Secret: ' + value)
-					this.plugin.settings.openAISecretKey = value
+
+		containerEl.createEl('h3', { text: 'GPT-3 Settings' })
+		containerEl.createEl('p', { text: 'Only modify these if you know what you\'re doing.' })
+
+		createNumberInput(
+			containerEl,
+			{
+				name: 'Max Tokens',
+				settingProvider: () => this.plugin.settings.maxTokens,
+				settingUpdate: async (value) => {
+					this.plugin.settings.maxTokens = value
 					await this.plugin.saveSettings()
-				}))
+				},
+				min: 0,
+				max: MAX_TOKENS,
+				extraButton: {
+					icon: 'links-going-out',
+					tooltip: 'Documentation',
+					url: 'https://beta.openai.com/docs/api-reference/completions/create#completions/create-max_tokens',
+				},
+				defaultValue: MAX_COMPLETION_TOKENS,
+			}
+		)
+
+		createNumberInput(
+			containerEl,
+			{
+				name: 'Temperature',
+				settingProvider: () => this.plugin.settings.temperature,
+				settingUpdate: async (value) => {
+					this.plugin.settings.temperature = value
+					await this.plugin.saveSettings()
+				},
+				min: 0,
+				max: 1,
+				extraButton: {
+					icon: 'links-going-out',
+					tooltip: 'Documentation',
+					url: 'https://beta.openai.com/docs/api-reference/completions/create#completions/create-temperature',
+				},
+				defaultValue: 0.8,
+			}
+		)
+
+
+		createNumberInput(
+			containerEl,
+			{
+				name: 'Top P',
+				settingProvider: () => this.plugin.settings.topP,
+				settingUpdate: async (value) => {
+					this.plugin.settings.topP = value
+					await this.plugin.saveSettings()
+				},
+				min: 0,
+				max: 1,
+				extraButton: {
+					icon: 'links-going-out',
+					tooltip: 'Documentation',
+					url: 'https://beta.openai.com/docs/api-reference/completions/create#completions/create-top_p',
+				},
+				defaultValue: 0.95,
+			}
+		)
 	}
+}
+
+function createNumberInput(containerEl: HTMLElement, options: {
+	name: string,
+	settingProvider: () => number,
+	settingUpdate: (value: number) => any,
+	min: number,
+	max: number,
+	description?: string,
+	extraButton?: {
+		icon: string,
+		tooltip: string,
+		url: string,
+	},
+	precision?: number,
+	defaultValue?: number,
+}) {
+	const { name, settingProvider, settingUpdate, min, max, description, extraButton, precision = 2, defaultValue } = options
+	let textComponent: TextComponent
+	const setting = new Setting(containerEl)
+		.setName(name)
+		.addText(text => {
+			textComponent = text
+			const updateValue = async () => {
+				const valueNumber = Math.max(min, Math.min(max, Number.parseFloat(text.getValue())))
+				const valueString = toPrecision(valueNumber, precision)
+				text.setValue(valueString)
+				settingUpdate(valueNumber)
+			}
+			text.inputEl.onblur = () => {
+				updateValue()
+			}
+			text.inputEl.onkeydown = (ev) => {
+				if (ev.key === 'Enter') {
+					updateValue()
+				}
+			}
+			return text
+				.setPlaceholder(`Enter a value from ${min} to ${max}`)
+				.setValue(toPrecision(settingProvider(), precision))
+		}
+		)
+	if (description) {
+		setting.setDesc(description)
+	}
+	if (defaultValue) {
+		setting.addExtraButton(button => button
+			.setIcon('undo')
+			.setTooltip('Revert to default')
+			.onClick(() => {
+				textComponent.setValue(toPrecision(defaultValue, precision))
+				settingUpdate(defaultValue)
+			}))
+	}
+	if (extraButton) {
+		setting.addExtraButton(button => button
+			.setIcon(extraButton.icon)
+			.setTooltip(extraButton.tooltip)
+			.onClick(() => {
+				open(extraButton.url)
+			}))
+	}
+}
+
+function toPrecision(value: number, precision: number) {
+	return (Math.floor(value * Math.pow(10, precision)) / Math.pow(10, precision)).toString()
 }
