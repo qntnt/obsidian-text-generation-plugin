@@ -1,6 +1,25 @@
 # Obsidian Text Generation Plugin
 > Clone of Obsidian Sample Plugin. README is not updated.
 
+# Configuration
+`temperature`, `top_p`, and other variables for GPT-3 are not currently configurable. Will be added to settings shortly.
+
+# Commands
+| Name | Description | ID |
+| - | - | - |
+| Generate Text | Generates text at the current cursor using the entire editor up to the cursor and frontmatter data |`text_generator:generate_text` |
+| Continue Selection | Generates a continuation of the selected text | `text_generator:continue_selection` |
+| Generate from Selection Directive | Submit the selected text "as-is" to GPT-3 and append the result (very powerful) | `text_generator:generate_selection` |
+| Generate document tags | Generates tags from the entire editor text and prepends them at the top of the document | `text_generator:tag_document` |
+| Reword Selection | Rewords the selected text and appends the result (results vary) | `text_generator:reword_selection` |
+| Simplify Selection | Simplifies the selected text to an eighth-grade level (results vary) | `text_generator:simplify_selection` |
+| Complicate Selection | The opposite of "simplify". Complicates the selected text to a PhD level (results vary)  |  `text_generator:complicate_selection` |
+| Rewrite Selection as Poetry | Writes poetry using the selected text as a basis | `text_generator:rewrite_as_poetry` |
+| Rewrite Selection as Song Lyrics | Writes song lyrics using the selected text as a basis | `text_generator:rewrite_as_song_lyrics` |
+
+
+# Sample Plugin README
+
 This is a sample plugin for Obsidian (https://obsidian.md).
 
 This project uses Typescript to provide type checking and documentation.
