@@ -1,4 +1,5 @@
-# Obsidian Sample Plugin
+# Obsidian Text Generation Plugin
+> Clone of Obsidian Sample Plugin. README is not updated.
 
 This is a sample plugin for Obsidian (https://obsidian.md).
 
