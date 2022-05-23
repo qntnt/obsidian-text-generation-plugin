@@ -1,9 +1,6 @@
 # Obsidian Text Generation Plugin
 > Clone of Obsidian Sample Plugin. README is not updated.
 
-# Configuration
-`temperature`, `top_p`, and other variables for GPT-3 are not currently configurable. Will be added to settings shortly.
-
 # Commands
 | Name | Description | ID |
 | - | - | - |
