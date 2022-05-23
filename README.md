@@ -1,5 +1,5 @@
 # Obsidian Text Generation Plugin
-> Clone of Obsidian Sample Plugin. README is not updated.
+> Clone of Obsidian Sample Plugin.
 
 # Commands
 | Name | Description | ID |
